@@ -1,0 +1,187 @@
+IDENTIFICATION DIVISION.
+PROGRAM-ID. HTTP-RESPONSE.
+
+ENVIRONMENT DIVISION.
+CONFIGURATION SECTION.
+REPOSITORY.
+    FUNCTION ALL INTRINSIC.
+
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 HEADER-BUF                  PIC X(2048).
+01 HDR-PTR                     PIC S9(9) COMP-5 VALUE 1.
+01 HDR-LEN                     PIC S9(9) COMP-5 VALUE 0.
+01 STATUS-TEXT                 PIC X(32) VALUE SPACES.
+01 LEN-TEXT                    PIC Z(9)9.
+01 ERR-TITLE                   PIC X(40) VALUE SPACES.
+01 ERR-BODY                    PIC X(512).
+01 BODY-PTR                    PIC S9(9) COMP-5 VALUE 1.
+01 FILE-FD                     PIC S9(9) COMP-5 VALUE -1.
+01 OPEN-PATH                   PIC X(4097).
+01 IO-BUF                      PIC X(8192).
+01 CHUNK-SIZE                  PIC S9(9) COMP-5 VALUE 8192.
+01 READ-COUNT                  PIC S9(9) COMP-5 VALUE 0.
+01 WROTE                       PIC S9(9) COMP-5 VALUE 0.
+01 FILE-EOF                    PIC X VALUE "N".
+
+LINKAGE SECTION.
+COPY "http.cpy".
+01 CLIENT-FD                   PIC S9(9) COMP-5.
+
+PROCEDURE DIVISION USING SERVER-CONTEXT CLIENT-FD.
+SEND-RESPONSE.
+    IF RES-STATUS = 0
+        MOVE 500 TO RES-STATUS
+    END-IF
+    MOVE -1 TO FILE-FD
+    IF RES-STATUS = 200 AND RES-HAS-FILE = "Y"
+        PERFORM OPEN-RESPONSE-FILE
+    END-IF
+    IF RES-STATUS NOT = 200
+        MOVE "N" TO RES-HAS-FILE
+        PERFORM BUILD-ERROR-BODY
+    END-IF
+    PERFORM SEND-HEADERS
+    IF RES-HEAD-ONLY NOT = "Y" AND WROTE >= 0
+        IF RES-HAS-FILE = "Y"
+            PERFORM STREAM-FILE
+        ELSE
+            PERFORM SEND-ERROR-BODY
+        END-IF
+    END-IF
+    IF FILE-FD >= 0
+        CALL "GWS_CLOSE" USING BY VALUE FILE-FD
+    END-IF
+    EXIT PROGRAM.
+
+OPEN-RESPONSE-FILE.
+    IF RES-FILE-PATH-LEN < 1 OR RES-FILE-PATH-LEN >= 4096
+        MOVE 500 TO RES-STATUS
+        EXIT PARAGRAPH
+    END-IF
+    MOVE SPACES TO OPEN-PATH
+    MOVE RES-FILE-PATH(1:RES-FILE-PATH-LEN) TO OPEN-PATH
+    MOVE LOW-VALUE TO OPEN-PATH(RES-FILE-PATH-LEN + 1:1)
+    CALL "GWS_OPEN_FILE" USING
+        BY REFERENCE OPEN-PATH
+        RETURNING FILE-FD
+    IF FILE-FD < 0
+        MOVE 500 TO RES-STATUS
+    END-IF.
+
+BUILD-ERROR-BODY.
+    EVALUATE RES-STATUS
+        WHEN 400
+            MOVE "400 Bad Request" TO ERR-TITLE
+        WHEN 404
+            MOVE "404 Not Found" TO ERR-TITLE
+        WHEN 405
+            MOVE "405 Method Not Allowed" TO ERR-TITLE
+        WHEN OTHER
+            MOVE "500 Internal Server Error" TO ERR-TITLE
+    END-EVALUATE
+    MOVE SPACES TO ERR-BODY
+    MOVE 1 TO BODY-PTR
+    STRING
+        "<!DOCTYPE html><html lang=""en""><head>"
+        "<meta charset=""utf-8""><title>"
+        DELIMITED BY SIZE
+        TRIM(ERR-TITLE) DELIMITED BY SIZE
+        "</title></head><body><h1>" DELIMITED BY SIZE
+        TRIM(ERR-TITLE) DELIMITED BY SIZE
+        "</h1></body></html>" DELIMITED BY SIZE
+        INTO ERR-BODY
+        WITH POINTER BODY-PTR
+    END-STRING
+    COMPUTE RES-BODY-LEN = BODY-PTR - 1
+    MOVE "text/html; charset=utf-8" TO RES-CONTENT-TYPE.
+
+SEND-HEADERS.
+    EVALUATE RES-STATUS
+        WHEN 200
+            MOVE "200 OK" TO STATUS-TEXT
+        WHEN 400
+            MOVE "400 Bad Request" TO STATUS-TEXT
+        WHEN 404
+            MOVE "404 Not Found" TO STATUS-TEXT
+        WHEN 405
+            MOVE "405 Method Not Allowed" TO STATUS-TEXT
+        WHEN OTHER
+            MOVE "500 Internal Server Error" TO STATUS-TEXT
+    END-EVALUATE
+    IF TRIM(RES-CONTENT-TYPE) = SPACES
+        MOVE "application/octet-stream" TO RES-CONTENT-TYPE
+    END-IF
+    MOVE RES-BODY-LEN TO LEN-TEXT
+    MOVE 1 TO HDR-PTR
+    STRING
+        "HTTP/1.1 " DELIMITED BY SIZE
+        TRIM(STATUS-TEXT) DELIMITED BY SIZE
+        X"0D0A" DELIMITED BY SIZE
+        "Content-Type: " DELIMITED BY SIZE
+        TRIM(RES-CONTENT-TYPE) DELIMITED BY SIZE
+        X"0D0A" DELIMITED BY SIZE
+        "Content-Length: " DELIMITED BY SIZE
+        TRIM(LEN-TEXT) DELIMITED BY SIZE
+        X"0D0A" DELIMITED BY SIZE
+        "Connection: close" DELIMITED BY SIZE
+        X"0D0A" DELIMITED BY SIZE
+        "X-Content-Type-Options: nosniff" DELIMITED BY SIZE
+        X"0D0A" DELIMITED BY SIZE
+        INTO HEADER-BUF
+        WITH POINTER HDR-PTR
+    END-STRING
+    IF RES-STATUS = 405
+        STRING
+            "Allow: GET, HEAD" DELIMITED BY SIZE
+            X"0D0A" DELIMITED BY SIZE
+            INTO HEADER-BUF
+            WITH POINTER HDR-PTR
+        END-STRING
+    END-IF
+    STRING X"0D0A" DELIMITED BY SIZE
+        INTO HEADER-BUF
+        WITH POINTER HDR-PTR
+    END-STRING
+    COMPUTE HDR-LEN = HDR-PTR - 1
+    CALL "GWS_WRITE" USING
+        BY VALUE CLIENT-FD
+        BY REFERENCE HEADER-BUF
+        BY VALUE HDR-LEN
+        RETURNING WROTE
+    IF WROTE < HDR-LEN
+        MOVE -1 TO WROTE
+    END-IF.
+
+SEND-ERROR-BODY.
+    IF RES-BODY-LEN > 0
+        CALL "GWS_WRITE" USING
+            BY VALUE CLIENT-FD
+            BY REFERENCE ERR-BODY
+            BY VALUE RES-BODY-LEN
+            RETURNING WROTE
+    END-IF.
+
+STREAM-FILE.
+    MOVE "N" TO FILE-EOF
+    PERFORM UNTIL FILE-EOF = "Y"
+        CALL "GWS_READ" USING
+            BY VALUE FILE-FD
+            BY REFERENCE IO-BUF
+            BY VALUE CHUNK-SIZE
+            RETURNING READ-COUNT
+        IF READ-COUNT <= 0
+            MOVE "Y" TO FILE-EOF
+        ELSE
+            CALL "GWS_WRITE" USING
+                BY VALUE CLIENT-FD
+                BY REFERENCE IO-BUF
+                BY VALUE READ-COUNT
+                RETURNING WROTE
+            IF WROTE < READ-COUNT
+                MOVE "Y" TO FILE-EOF
+            END-IF
+        END-IF
+    END-PERFORM.
+
+END PROGRAM HTTP-RESPONSE.

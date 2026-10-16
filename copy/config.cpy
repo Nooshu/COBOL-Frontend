@@ -1,0 +1,4 @@
+01 SERVER-PORT                PIC S9(9) COMP-5 VALUE 8080.
+01 DOCUMENT-ROOT              PIC X(512) VALUE "site".
+01 DOCUMENT-ROOT-LEN          PIC S9(9) COMP-5 VALUE 4.
+01 ENV-VALUE                  PIC X(512).

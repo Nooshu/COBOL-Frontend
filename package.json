@@ -1,0 +1,11 @@
+{
+  "name": "cobol-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:site": "node scripts/build-site.mjs"
+  },
+  "dependencies": {
+    "govuk-frontend": "6.6.0"
+  }
+}
