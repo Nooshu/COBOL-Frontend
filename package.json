@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:site": "node scripts/build-site.mjs"
+    "build:site": "node scripts/build-site.mjs",
+    "test:fixtures": "node scripts/test-fixtures.mjs"
   },
   "dependencies": {
     "govuk-frontend": "6.6.0"
