@@ -103,6 +103,41 @@ int GWS_OPEN_FILE(const char *path) {
     return open(path, O_RDONLY);
 }
 
+int GWS_RANDOM(unsigned char *buffer, int length) {
+    int fd;
+    int filled;
+    ssize_t count;
+
+    if (length < 0) {
+        return -1;
+    }
+
+    fd = open("/dev/urandom", O_RDONLY);
+    if (fd < 0) {
+        return -1;
+    }
+
+    filled = 0;
+    while (filled < length) {
+        count = read(fd, buffer + filled, (size_t) (length - filled));
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            close(fd);
+            return -1;
+        }
+        if (count == 0) {
+            close(fd);
+            return -1;
+        }
+        filled += (int) count;
+    }
+
+    close(fd);
+    return filled;
+}
+
 int GWS_FILE_SIZE(const char *path) {
     struct stat info;
 

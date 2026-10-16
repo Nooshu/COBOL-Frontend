@@ -37,16 +37,27 @@ SEND-RESPONSE.
     IF RES-STATUS = 200 AND RES-HAS-FILE = "Y"
         PERFORM OPEN-RESPONSE-FILE
     END-IF
-    IF RES-STATUS NOT = 200
-        MOVE "N" TO RES-HAS-FILE
-        PERFORM BUILD-ERROR-BODY
+    IF RES-STATUS = 303
+        MOVE 0 TO RES-BODY-LEN
+    ELSE
+        IF RES-STATUS NOT = 200 OR
+            (RES-HAS-FILE NOT = "Y" AND RES-HAS-BODY NOT = "Y")
+            MOVE "N" TO RES-HAS-FILE
+            MOVE "N" TO RES-HAS-BODY
+            PERFORM BUILD-ERROR-BODY
+        END-IF
     END-IF
     PERFORM SEND-HEADERS
-    IF RES-HEAD-ONLY NOT = "Y" AND WROTE >= 0
+    IF RES-HEAD-ONLY NOT = "Y" AND RES-STATUS NOT = 303
+        AND WROTE >= 0
         IF RES-HAS-FILE = "Y"
             PERFORM STREAM-FILE
         ELSE
-            PERFORM SEND-ERROR-BODY
+            IF RES-HAS-BODY = "Y"
+                PERFORM SEND-PAGE-BODY
+            ELSE
+                PERFORM SEND-ERROR-BODY
+            END-IF
         END-IF
     END-IF
     IF FILE-FD >= 0
@@ -106,6 +117,8 @@ SEND-HEADERS.
             MOVE "404 Not Found" TO STATUS-TEXT
         WHEN 405
             MOVE "405 Method Not Allowed" TO STATUS-TEXT
+        WHEN 303
+            MOVE "303 See Other" TO STATUS-TEXT
         WHEN OTHER
             MOVE "500 Internal Server Error" TO STATUS-TEXT
     END-EVALUATE
@@ -139,6 +152,41 @@ SEND-HEADERS.
             WITH POINTER HDR-PTR
         END-STRING
     END-IF
+    IF RES-STATUS = 303
+        STRING
+            "Location: " DELIMITED BY SIZE
+            TRIM(RES-LOCATION) DELIMITED BY SIZE
+            X"0D0A" DELIMITED BY SIZE
+            INTO HEADER-BUF
+            WITH POINTER HDR-PTR
+        END-STRING
+    END-IF
+    IF RES-SET-COOKIE = "Y"
+        STRING
+            "Set-Cookie: session=" DELIMITED BY SIZE
+            RES-SESSION DELIMITED BY SIZE
+            "; HttpOnly; Path=/; SameSite=Lax" DELIMITED BY SIZE
+            X"0D0A" DELIMITED BY SIZE
+            INTO HEADER-BUF
+            WITH POINTER HDR-PTR
+        END-STRING
+    END-IF
+    IF RES-NO-STORE = "Y"
+        STRING
+            "Cache-Control: no-store" DELIMITED BY SIZE
+            X"0D0A" DELIMITED BY SIZE
+            INTO HEADER-BUF
+            WITH POINTER HDR-PTR
+        END-STRING
+    END-IF
+    IF RES-CONTENT-TYPE(1:9) = "text/html"
+        STRING
+            "X-Robots-Tag: noindex, nofollow" DELIMITED BY SIZE
+            X"0D0A" DELIMITED BY SIZE
+            INTO HEADER-BUF
+            WITH POINTER HDR-PTR
+        END-STRING
+    END-IF
     STRING X"0D0A" DELIMITED BY SIZE
         INTO HEADER-BUF
         WITH POINTER HDR-PTR
@@ -151,6 +199,15 @@ SEND-HEADERS.
         RETURNING WROTE
     IF WROTE < HDR-LEN
         MOVE -1 TO WROTE
+    END-IF.
+
+SEND-PAGE-BODY.
+    IF RES-BODY-LEN > 0
+        CALL "GWS_WRITE" USING
+            BY VALUE CLIENT-FD
+            BY REFERENCE RES-BODY
+            BY VALUE RES-BODY-LEN
+            RETURNING WROTE
     END-IF.
 
 SEND-ERROR-BODY.

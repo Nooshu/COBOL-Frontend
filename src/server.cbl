@@ -21,6 +21,11 @@ COPY "http.cpy".
 01 HEADERS-DONE                PIC X VALUE "N".
 01 CLIENT-OPEN                 PIC X VALUE "Y".
 01 PORT-TEXT                   PIC Z(4)9.
+01 REQUEST-LENGTH              PIC S9(9) COMP-5 VALUE 0.
+01 HEADER-POS                  PIC S9(9) COMP-5 VALUE 0.
+01 DIGIT-POS                   PIC S9(9) COMP-5 VALUE 0.
+01 LOW-RAW                     PIC X(8192).
+01 FOUND-LENGTH                PIC X VALUE "N".
 
 PROCEDURE DIVISION.
 MAIN-SECTION.
@@ -116,10 +121,18 @@ HANDLE-CLIENT.
     IF REQ-STATUS = 0
         CALL "HTTP-REQUEST" USING SERVER-CONTEXT
     END-IF
+    IF REQ-STATUS = 0 AND REQ-METHOD = "POST"
+        PERFORM READ-BODY
+    END-IF
     IF REQ-STATUS = 0
-        CALL "STATIC-FILE" USING SERVER-CONTEXT
-    ELSE
+        CALL "JOURNEY" USING SERVER-CONTEXT
+    END-IF
+    IF REQ-STATUS NOT = 0
         MOVE REQ-STATUS TO RES-STATUS
+    ELSE
+        IF RES-STATUS = 0
+            CALL "STATIC-FILE" USING SERVER-CONTEXT
+        END-IF
     END-IF
     MOVE REQ-HEAD-ONLY TO RES-HEAD-ONLY
     CALL "HTTP-RESPONSE" USING SERVER-CONTEXT CLIENT-FD
@@ -151,6 +164,55 @@ READ-HEADERS.
                 END-IF
             END-IF
         END-IF
+    END-PERFORM.
+
+READ-BODY.
+    MOVE 0 TO REQ-BODY-LEN
+    MOVE 0 TO REQUEST-LENGTH
+    MOVE "N" TO FOUND-LENGTH
+    IF REQ-RAW-LEN > 15
+        MOVE LOWER-CASE(REQ-RAW(1:REQ-RAW-LEN)) TO LOW-RAW
+        PERFORM VARYING HEADER-POS FROM 1 BY 1
+            UNTIL HEADER-POS > REQ-RAW-LEN - 15 OR FOUND-LENGTH = "Y"
+            IF LOW-RAW(HEADER-POS:15) = "content-length:"
+                MOVE "Y" TO FOUND-LENGTH
+                COMPUTE DIGIT-POS = HEADER-POS + 15
+                PERFORM UNTIL DIGIT-POS > REQ-RAW-LEN
+                    OR LOW-RAW(DIGIT-POS:1) NOT = SPACE
+                    ADD 1 TO DIGIT-POS
+                END-PERFORM
+                IF DIGIT-POS > REQ-RAW-LEN
+                    OR LOW-RAW(DIGIT-POS:1) < "0"
+                    OR LOW-RAW(DIGIT-POS:1) > "9"
+                    MOVE 400 TO REQ-STATUS
+                    EXIT PARAGRAPH
+                END-IF
+                PERFORM UNTIL DIGIT-POS > REQ-RAW-LEN
+                    OR LOW-RAW(DIGIT-POS:1) < "0"
+                    OR LOW-RAW(DIGIT-POS:1) > "9"
+                    COMPUTE REQUEST-LENGTH = REQUEST-LENGTH * 10
+                        + ORD(LOW-RAW(DIGIT-POS:1)) - ORD("0")
+                    ADD 1 TO DIGIT-POS
+                END-PERFORM
+            END-IF
+        END-PERFORM
+    END-IF
+    IF REQUEST-LENGTH > 4096
+        MOVE 400 TO REQ-STATUS
+        EXIT PARAGRAPH
+    END-IF
+    PERFORM UNTIL REQ-BODY-LEN >= REQUEST-LENGTH
+        CALL "GWS_READ" USING
+            BY VALUE CLIENT-FD
+            BY REFERENCE ONE-BYTE
+            BY VALUE READ-ONE
+            RETURNING READ-COUNT
+        IF READ-COUNT <= 0
+            MOVE 400 TO REQ-STATUS
+            EXIT PARAGRAPH
+        END-IF
+        ADD 1 TO REQ-BODY-LEN
+        MOVE ONE-BYTE TO REQ-BODY(REQ-BODY-LEN:1)
     END-PERFORM.
 
 END PROGRAM GOVUK-SERVER.

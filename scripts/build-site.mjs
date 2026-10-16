@@ -13,7 +13,10 @@ if (!css.includes("url(/assets/")) {
   throw new Error("Expected govuk-frontend.min.css to reference absolute /assets/ URLs")
 }
 
-const headerHtml = fixtureHtml("header", "default")
+const headerHtml = fixtureHtml("header", "default").replaceAll(
+  'href="//gov.uk"',
+  'href="/"',
+)
 const footerHtml = fixtureHtml("footer", "default")
 
 function fixtureHtml(component, name) {
@@ -56,12 +59,14 @@ function page(title, content) {
     <title>${escapeHtml(title)}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#1d70b8">
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" sizes="48x48" href="/assets/images/favicon.ico">
     <link rel="icon" sizes="any" href="/assets/images/favicon.svg" type="image/svg+xml">
     <link rel="mask-icon" href="/assets/images/govuk-icon-mask.svg" color="#1d70b8">
     <link rel="apple-touch-icon" href="/assets/images/govuk-icon-180.png">
     <link rel="manifest" href="/assets/manifest.json">
     <link rel="stylesheet" href="/assets/govuk-frontend.min.css">
+    <link rel="stylesheet" href="/assets/application.css">
   </head>
   <body class="govuk-template__body">
     <script>document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');</script>
@@ -72,18 +77,38 @@ ${headerHtml}
         <div class="govuk-width-container">
           <div class="govuk-service-navigation__container">
             <span class="govuk-service-navigation__service-name">
-              <a href="/" class="govuk-service-navigation__link">GOV.UK Frontend fixtures</a>
+              <a href="/" class="govuk-service-navigation__link">Apply for a fishing rod licence</a>
             </span>
           </div>
         </div>
       </section>
     </header>
     <div class="govuk-width-container">
+      <div class="govuk-phase-banner">
+        <p class="govuk-phase-banner__content">
+          <strong class="govuk-tag govuk-phase-banner__content__tag">Example</strong>
+          <span class="govuk-phase-banner__text">This is a demonstration – it is not a live government service.</span>
+        </p>
+      </div>
       <main class="govuk-main-wrapper" id="main-content">
+        <div class="govuk-notification-banner app-demo-banner" role="region" aria-labelledby="app-demo-banner-title" data-module="govuk-notification-banner">
+          <div class="govuk-notification-banner__header">
+            <h2 class="govuk-notification-banner__title" id="app-demo-banner-title">Important</h2>
+          </div>
+          <div class="govuk-notification-banner__content">
+            <p class="govuk-notification-banner__heading">This is a live demo. It is not a real government service.</p>
+          </div>
+        </div>
 ${content}
       </main>
     </div>
     <footer class="govuk-template__footer">
+      <div class="govuk-width-container">
+        <ul class="govuk-footer__inline-list">
+          <li class="govuk-footer__inline-list-item"><a class="govuk-footer__link" href="/fees">Licence fees</a></li>
+          <li class="govuk-footer__inline-list-item"><a class="govuk-footer__link" href="/components">Component catalogue</a></li>
+        </ul>
+      </div>
 ${footerHtml}
     </footer>
     <script type="module" src="/assets/govuk-frontend.min.js"></script>
@@ -171,5 +196,119 @@ ${components.map((component) => `      <li><a class="govuk-link" href="/fixtures
     </ul>`,
 )
 
-fs.writeFileSync(path.join(siteDir, "index.html"), index)
+fs.mkdirSync(path.join(siteDir, "partials"), { recursive: true })
+fs.mkdirSync(path.join(siteDir, "fees"), { recursive: true })
+fs.writeFileSync(path.join(siteDir, "components", "index.html"), index)
+fs.writeFileSync(path.join(siteDir, "robots.txt"), "User-agent: *\nDisallow: /\n")
+fs.writeFileSync(
+  path.join(siteDir, "assets", "application.css"),
+  `.app-demo-banner {
+  border-color: #fd0;
+  background: #fff7bf;
+}
+
+.app-demo-banner .govuk-notification-banner__header {
+  background-color: #fd0;
+}
+
+.app-demo-banner .govuk-notification-banner__title {
+  color: #0b0c0c;
+}
+`,
+)
+fs.writeFileSync(path.join(siteDir, "partials", "top.html"), chromeTop("en"))
+fs.writeFileSync(path.join(siteDir, "partials", "top-cy.html"), chromeTop("cy"))
+fs.writeFileSync(path.join(siteDir, "partials", "bottom.html"), chromeBottom())
+fs.writeFileSync(
+  path.join(siteDir, "fees", "index.html"),
+  page(
+    "Licence fees – Apply for a fishing rod licence",
+    `    <h1 class="govuk-heading-xl">Licence fees</h1>
+    <p class="govuk-body">These are example fees. This service does not take payment.</p>
+    <table class="govuk-table">
+      <caption class="govuk-table__caption govuk-table__caption--m">Rod licence fees</caption>
+      <thead class="govuk-table__head">
+        <tr class="govuk-table__row">
+          <th scope="col" class="govuk-table__header">Licence</th>
+          <th scope="col" class="govuk-table__header govuk-table__header--numeric">Fee</th>
+        </tr>
+      </thead>
+      <tbody class="govuk-table__body">
+        <tr class="govuk-table__row"><th scope="row" class="govuk-table__header">1 day</th><td class="govuk-table__cell govuk-table__cell--numeric">£7.10</td></tr>
+        <tr class="govuk-table__row"><th scope="row" class="govuk-table__header">8 days</th><td class="govuk-table__cell govuk-table__cell--numeric">£14.20</td></tr>
+        <tr class="govuk-table__row"><th scope="row" class="govuk-table__header">12 months</th><td class="govuk-table__cell govuk-table__cell--numeric">£36.80</td></tr>
+      </tbody>
+    </table>
+    <p class="govuk-body"><a class="govuk-link" href="/">Back to the start page</a></p>`,
+  ),
+)
 console.log(`Wrote ${components.length} components to ${siteDir}`)
+
+function chromeTop(lang) {
+  const welsh = lang === "cy"
+  const skip = welsh ? "Neidio i'r prif gynnwys" : "Skip to main content"
+  const service = welsh ? "Gwneud cais am drwydded bysgota" : "Apply for a fishing rod licence"
+  const home = welsh ? "/cy" : "/"
+  const phaseTag = welsh ? "Enghraifft" : "Example"
+  const phaseText = welsh
+    ? "Mae hon yn arddangosiad – nid gwasanaeth llywodraeth byw mohono."
+    : "This is a demonstration – it is not a live government service."
+  const bannerTitle = welsh ? "Pwysig" : "Important"
+  const bannerText = welsh
+    ? "Mae hwn yn arddangosiad byw. Nid gwasanaeth llywodraeth go iawn mohono."
+    : "This is a live demo. It is not a real government service."
+  return `<body class="govuk-template__body">
+    <script>document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');</script>
+    <a href="#main-content" class="govuk-skip-link" data-module="govuk-skip-link">${skip}</a>
+    <header class="govuk-template__header">
+${headerHtml}
+      <section aria-label="Service information" class="govuk-service-navigation" data-module="govuk-service-navigation">
+        <div class="govuk-width-container">
+          <div class="govuk-service-navigation__container">
+            <span class="govuk-service-navigation__service-name">
+              <a href="${home}" class="govuk-service-navigation__link">${service}</a>
+            </span>
+          </div>
+        </div>
+      </section>
+    </header>
+    <div class="govuk-width-container">
+      <div class="govuk-phase-banner">
+        <p class="govuk-phase-banner__content">
+          <strong class="govuk-tag govuk-phase-banner__content__tag">${phaseTag}</strong>
+          <span class="govuk-phase-banner__text">${phaseText}</span>
+        </p>
+      </div>
+      <main class="govuk-main-wrapper" id="main-content">
+        <div class="govuk-notification-banner app-demo-banner" role="region" aria-labelledby="app-demo-banner-title" data-module="govuk-notification-banner">
+          <div class="govuk-notification-banner__header">
+            <h2 class="govuk-notification-banner__title" id="app-demo-banner-title">${bannerTitle}</h2>
+          </div>
+          <div class="govuk-notification-banner__content">
+            <p class="govuk-notification-banner__heading">${bannerText}</p>
+          </div>
+        </div>
+`
+}
+
+function chromeBottom() {
+  return `      </main>
+    </div>
+    <footer class="govuk-template__footer">
+      <div class="govuk-width-container">
+        <ul class="govuk-footer__inline-list">
+          <li class="govuk-footer__inline-list-item"><a class="govuk-footer__link" href="/fees">Licence fees</a></li>
+          <li class="govuk-footer__inline-list-item"><a class="govuk-footer__link" href="/components">Component catalogue</a></li>
+        </ul>
+      </div>
+${footerHtml}
+    </footer>
+    <script type="module" src="/assets/govuk-frontend.min.js"></script>
+    <script type="module">
+      import { initAll } from "/assets/govuk-frontend.min.js"
+      initAll()
+    </script>
+  </body>
+</html>
+`
+}
