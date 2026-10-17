@@ -1,0 +1,15 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Free web service (0.1 CPU, 512 MB). Spins down after 15 minutes without traffic.
+# Render injects PORT at runtime. Do not set it here; the image default of 8080
+# is only for local Docker. The server binds 0.0.0.0 and reads PORT.
+services:
+  - type: web
+    name: cobol-frontend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: DOCUMENT_ROOT
+        value: /srv/site
